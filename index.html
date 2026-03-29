@@ -228,7 +228,8 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
       <label>Reparto</label>
       <select id="selDept" onchange="filterActivitiesByDept()"></select>
       <label>Operatore</label>
-      <select id="selUser"></select>
+      <input type="text" id="selUser" list="workerList" placeholder="Digita nome…" autocomplete="off">
+      <datalist id="workerList"></datalist>
       <label>Attività</label>
       <select id="selActivity"></select>
       <label>Orario (lascia vuoto per ora attuale)</label>
@@ -482,9 +483,9 @@ function populateSelects() {
   d.innerHTML = vd.map(x => `<option>${x.name}</option>`).join('');
   if (vd.find(x => x.name === pd)) d.value = pd;
 
-  const u = document.getElementById('selUser'), pu = u.value;
-  u.innerHTML = state.workers.map(x => `<option>${x}</option>`).join('');
-  if (state.workers.includes(pu)) u.value = pu;
+  // popola datalist operatori
+  const dl = document.getElementById('workerList');
+  dl.innerHTML = state.workers.map(x => `<option value="${x}">`).join('');
 
   filterActivitiesByDept();
 }
@@ -579,11 +580,15 @@ function updateImputeBtn() {
 function addImputation() {
   if (!getShift('shift_start') || getShift('shift_end')) { showToast('⚠️ Avvia il turno prima'); return; }
   const dept     = document.getElementById('selDept').value;
-  const user     = document.getElementById('selUser').value;
+  const user     = document.getElementById('selUser').value.trim();
   const activity = document.getElementById('selActivity').value;
   const time     = document.getElementById('timeImpute').value || now();
   if (!dept || !user || !activity) { showToast('Compila tutti i campi'); return; }
-  state.events.push({ id: Date.now(), type: 'imputation', dept, user, activity, time, date: today() });
+  state.events.push({
+    id: Date.now(), type: 'imputation',
+    dept, user, activity, time, date: today(),
+    registeredBy: session?.username || '—'
+  });
   save();
   document.getElementById('timeImpute').value = '';
   showToast(`✅ ${user} → ${activity} alle ${time}`);
@@ -600,15 +605,17 @@ function computeToday() {
   const allImps  = evs.filter(e => e.type === 'imputation');
   const shiftEnd = evs.find(e => e.type === 'shift_end');
 
-  // filter imputations by visible depts (non-admin)
+  // filter imputations by visible depts for non-admin
   const imps = isAdmin() ? allImps : allImps.filter(i => vdNames.includes(i.dept));
 
-  return imps.map((imp, i) => {
-    const nextImp = allImps[allImps.indexOf(imp) + 1]; // use ALL imps for time calc
+  return imps.map((imp) => {
+    const nextImp = allImps[allImps.indexOf(imp) + 1]; // usa TUTTE le imp per calcolo tempo
     const candidates = [nextImp, shiftEnd]
       .filter(c => c && t2m(c.time) > t2m(imp.time))
       .sort((a,b) => t2m(a.time)-t2m(b.time));
-    return { ...imp, mins: candidates[0] ? t2m(candidates[0].time) - t2m(imp.time) : null };
+    const next = candidates[0];
+    const mins = next ? t2m(next.time) - t2m(imp.time) : null;
+    return { ...imp, mins, endTime: next ? next.time : null };
   });
 }
 
@@ -747,11 +754,15 @@ function exportXLSX() {
   const wb = XLSX.utils.book_new();
 
   const ws1 = XLSX.utils.aoa_to_sheet([
-    ['DATA','REPARTO','OPERATORE','ATTIVITÀ','ORA REGISTRAZIONE','DURATA (min)','DURATA (h)'],
-    ...rows.map(r => [r.date, r.dept||'—', r.user, r.activity, r.time,
-      r.mins??'', r.mins!=null?(r.mins/60).toFixed(2):'—'])
+    ['DATA','REPARTO','OPERATORE','ATTIVITÀ','ORA REGISTRAZIONE','ORA FINE','DURATA (min)','DURATA (h)','REGISTRATO DA'],
+    ...rows.map(r => [
+      r.date, r.dept||'—', r.user, r.activity,
+      r.time, r.endTime||'—',
+      r.mins??'', r.mins!=null?(r.mins/60).toFixed(2):'—',
+      r.registeredBy||'—'
+    ])
   ]);
-  ws1['!cols'] = [{wch:12},{wch:18},{wch:20},{wch:20},{wch:18},{wch:13},{wch:12}];
+  ws1['!cols'] = [{wch:12},{wch:18},{wch:20},{wch:20},{wch:18},{wch:12},{wch:13},{wch:12},{wch:18}];
 
   const tree = {};
   rows.filter(r=>r.mins!=null).forEach(r => {
