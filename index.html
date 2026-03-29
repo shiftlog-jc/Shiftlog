@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1C1F26">
+<meta name="color-scheme" content="dark">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>ShiftLog</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg: #1C1F26;
+  --surface: #23272f;
+  --surface2: #2a2f3a;
+  --border: #363c48;
+  --accent: #A4D200;
+  --warn: #f59e0b;
+  --danger: #f87171;
+  --text: #f0f2f0;
+  --muted: #7a8494;
+  --radius: 14px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; min-height: 100dvh; display: flex; flex-direction: column; }
+
+/* ── LOGIN ── */
+#loginScreen {
+  position: fixed; inset: 0; z-index: 1000;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 32px 24px;
+}
+.login-logo { font-size: 2.2rem; font-weight: 800; letter-spacing: -1px; margin-bottom: 36px; }
+.login-logo span { color: var(--accent); }
+.login-box { width: 100%; max-width: 340px; }
+.login-box label { display: block; font-size: 0.72rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+.login-box input {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px; color: var(--text);
+  font-family: 'Syne', sans-serif; font-size: 0.95rem; font-weight: 500;
+  margin-bottom: 14px; outline: none; color-scheme: dark;
+  transition: border-color .2s;
+}
+.login-box input:focus { border-color: var(--accent); }
+.login-error { font-size: 0.82rem; color: var(--danger); margin-bottom: 12px; min-height: 20px; }
+
+/* ── HEADER ── */
+header {
+  padding: 16px 20px 13px; display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; background: var(--bg);
+}
+.logo { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.5px; }
+.logo span { color: var(--accent); }
+.header-right { display: flex; align-items: center; gap: 8px; }
+.date-badge { font-family: 'DM Mono', monospace; font-size: 0.72rem; background: var(--surface2); border: 1px solid var(--border); padding: 4px 10px; border-radius: 20px; color: var(--muted); }
+.user-badge { font-family: 'DM Mono', monospace; font-size: 0.72rem; background: var(--surface2); border: 1px solid var(--accent); padding: 4px 10px; border-radius: 20px; color: var(--accent); cursor: pointer; display: flex; align-items: center; gap: 6px; }
+
+/* ── NAV ── */
+nav { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+nav::-webkit-scrollbar { display: none; }
+nav button { flex: 1; min-width: 72px; padding: 13px 6px; background: none; border: none; color: var(--muted); font-family: 'Syne', sans-serif; font-size: 0.73rem; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: all .2s; white-space: nowrap; }
+nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ── MAIN ── */
+main { flex: 1; padding: 20px 16px; max-width: 480px; margin: 0 auto; width: 100%; }
+.section { display: none; }
+.section.active { display: block; }
+h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: 14px; }
+h3 { font-size: 0.88rem; font-weight: 700; margin-bottom: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+
+/* ── CARD ── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+
+/* ── FORM ── */
+label { display: block; font-size: 0.72rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; letter-spacing: .05em; text-transform: uppercase; }
+select, input[type="text"], input[type="password"], input[type="time"] {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 13px 14px; color: var(--text); font-family: 'Syne', sans-serif;
+  font-size: 0.95rem; font-weight: 500; margin-bottom: 14px; outline: none;
+  transition: border-color .2s; -webkit-appearance: none; appearance: none; color-scheme: dark;
+}
+select:focus, input:focus { border-color: var(--accent); }
+select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237a8494' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+
+/* ── BUTTONS ── */
+.btn { width: 100%; padding: 15px; border: none; border-radius: 12px; font-family: 'Syne', sans-serif; font-size: 0.95rem; font-weight: 700; cursor: pointer; transition: all .18s; letter-spacing: .02em; }
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: var(--accent); color: #1C1F26; }
+.btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); padding: 7px 10px; width: auto; font-size: 0.75rem; border-radius: 8px; }
+.btn-edit { background: transparent; color: var(--accent); border: 1px solid var(--accent); padding: 7px 10px; width: auto; font-size: 0.75rem; border-radius: 8px; }
+.btn-xs { padding: 6px 12px; font-size: 0.75rem; border-radius: 8px; width: auto; }
+.btn-warn { background: var(--warn); color: #1C1F26; }
+
+/* ── SHIFT BAR ── */
+.shift-bar { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px; display: flex; align-items: center; gap: 12px; }
+.shift-bar.on { border-color: var(--accent); background: linear-gradient(135deg,#A4D20018,#1C1F26); }
+.shift-bar.done { border-color: var(--muted); opacity: .75; }
+.shift-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.shift-bar.on .shift-dot { background: var(--accent); animation: pulse 1.5s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.85)} }
+.shift-info { flex: 1; font-size: .82rem; line-height: 1.4; }
+.shift-info strong { color: var(--accent); }
+
+/* ── LOG ITEMS ── */
+.log-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 14px; margin-bottom: 10px; display: flex; align-items: flex-start; gap: 10px; animation: slideIn .22s ease; }
+.log-item.is-shift { border-color: var(--warn); background: linear-gradient(135deg,#f59e0b18,#1C1F26); }
+@keyframes slideIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+.log-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); margin-top: 5px; flex-shrink: 0; }
+.log-dot.shift-marker { background: var(--warn); }
+.log-body { flex: 1; min-width: 0; }
+.log-user { font-weight: 700; font-size: .9rem; }
+.log-activity { color: var(--accent); font-size: .82rem; font-weight: 600; margin-top: 2px; }
+.log-activity.shift-label { color: var(--warn); }
+.log-time { font-family: 'DM Mono', monospace; font-size: .72rem; color: var(--muted); margin-top: 3px; }
+.log-duration { font-family: 'DM Mono', monospace; font-size: .75rem; color: var(--accent); margin-top: 3px; font-weight: 600; }
+.log-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* ── EDIT ROW ── */
+.edit-row { background: var(--surface2); border: 1px solid var(--accent); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; }
+.edit-row select { margin-bottom: 10px; }
+.edit-row-btns { display: flex; gap: 8px; }
+.edit-row-btns .btn { flex: 1; padding: 10px; font-size: .85rem; }
+
+/* ── PILLS ── */
+.pill-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.pill { background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: .8rem; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.pill-remove { color: var(--muted); cursor: pointer; font-size: 1rem; line-height: 1; transition: color .15s; }
+.pill-remove:hover { color: var(--danger); }
+
+/* ── DEPT CARD (settings) ── */
+.dept-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 14px; margin-bottom: 10px; }
+.dept-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.dept-card-name { font-weight: 700; font-size: .9rem; }
+.dept-add-row { display: flex; gap: 6px; margin-top: 8px; }
+.dept-add-row input { margin-bottom: 0; flex: 1; font-size: .85rem; padding: 9px 12px; }
+
+/* ── ACCOUNT CARD (admin) ── */
+.account-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; }
+.account-avatar { width: 38px; height: 38px; border-radius: 50%; background: #A4D20022; border: 1.5px solid var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1rem; color: var(--accent); flex-shrink: 0; }
+.account-info { flex: 1; min-width: 0; }
+.account-name { font-weight: 700; font-size: .9rem; }
+.account-meta { font-size: .75rem; color: var(--muted); margin-top: 2px; }
+.account-actions { display: flex; gap: 6px; }
+
+/* ── STATS / REPORT ── */
+.stat-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.stat-row:last-child { border-bottom: none; }
+.stat-label { font-size: .85rem; }
+.stat-val { font-family: 'DM Mono', monospace; font-size: .82rem; color: var(--accent); font-weight: 500; }
+
+/* ── MISC ── */
+.sep { height: 1px; background: var(--border); margin: 14px 0; }
+.empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: .88rem; }
+.empty-icon { font-size: 2.2rem; margin-bottom: 10px; }
+.warn-box { background: #f59e0b1a; border: 1px solid var(--warn); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: .82rem; color: var(--warn); }
+.role-badge { display: inline-block; font-size: .68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; text-transform: uppercase; letter-spacing: .04em; }
+.role-admin { background: #A4D20030; color: var(--accent); }
+.role-amm { background: #818cf820; color: #818cf8; }
+.role-op { background: #f59e0b20; color: var(--warn); }
+
+#toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--accent); color: #1C1F26; padding: 11px 20px; border-radius: 24px; font-weight: 700; font-size: .85rem; z-index: 999; transition: transform .3s ease; white-space: nowrap; pointer-events: none; }
+#toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN SCREEN ══ -->
+<div id="loginScreen">
+  <div class="login-logo">Shift<span>Log</span></div>
+  <div class="login-box">
+    <label>Username</label>
+    <input type="text" id="loginUser" placeholder="Il tuo username…" autocomplete="username">
+    <label>Password</label>
+    <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password">
+    <div class="login-error" id="loginError"></div>
+    <button class="btn btn-primary" onclick="doLogin()">Accedi</button>
+  </div>
+</div>
+
+<!-- ══ APP ══ -->
+<header>
+  <div class="logo">Shift<span>Log</span></div>
+  <div class="header-right">
+    <div class="date-badge" id="headerDate"></div>
+    <div class="user-badge" id="userBadge" onclick="doLogout()" style="display:none" title="Tocca per disconnetterti">
+      <span id="userBadgeName"></span>
+      <span style="color:var(--danger);font-weight:700">✕</span>
+    </div>
+  </div>
+</header>
+
+<nav id="mainNav">
+  <button class="active" onclick="showTab('log',this)" data-roles="admin,amm,op">⏱ Registra</button>
+  <button onclick="showTab('today',this)" data-roles="admin,amm,op">📋 Oggi</button>
+  <button onclick="showTab('report',this)" data-roles="admin,amm,op">📊 Report</button>
+  <button onclick="showTab('settings',this)" data-roles="admin,amm,op">⚙️ Gestione</button>
+  <button onclick="showTab('accounts',this)" data-roles="admin">👥 Utenti</button>
+</nav>
+
+<main>
+
+  <!-- ══ TAB: REGISTRA ══ -->
+  <div id="tab-log" class="section active">
+
+    <div id="shiftBar" class="shift-bar">
+      <div class="shift-dot"></div>
+      <div class="shift-info" id="shiftInfo">Turno non avviato</div>
+      <button class="btn btn-warn btn-xs" id="shiftBtn" onclick="openShiftPanel()">Inizio turno</button>
+    </div>
+
+    <div id="shiftPanel" class="card" style="display:none;margin-bottom:12px">
+      <label id="shiftPanelLabel">Orario inizio turno</label>
+      <input type="time" id="shiftTime" style="margin-bottom:12px">
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" style="flex:1;padding:11px" onclick="confirmShift()">✓ Conferma</button>
+        <button class="btn btn-secondary" style="flex:1;padding:11px" onclick="closeShiftPanel()">Annulla</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <label>Reparto</label>
+      <select id="selDept" onchange="filterActivitiesByDept()"></select>
+      <label>Operatore</label>
+      <select id="selUser"></select>
+      <label>Attività</label>
+      <select id="selActivity"></select>
+      <label>Orario (lascia vuoto per ora attuale)</label>
+      <input type="time" id="timeImpute">
+      <div id="shiftWarning" class="warn-box" style="display:none">⚠️ Avvia prima il turno per registrare imputazioni</div>
+      <button class="btn btn-primary" id="btnImpute" onclick="addImputation()">✚ Registra imputazione</button>
+    </div>
+  </div>
+
+  <!-- ══ TAB: OGGI ══ -->
+  <div id="tab-today" class="section">
+    <h2>Imputazioni di oggi</h2>
+    <div id="todayList"></div>
+  </div>
+
+  <!-- ══ TAB: REPORT ══ -->
+  <div id="tab-report" class="section">
+    <h2>Report giornaliero</h2>
+    <div class="card" id="reportSummary">
+      <div class="empty"><div class="empty-icon">📊</div>Nessuna imputazione ancora</div>
+    </div>
+    <button class="btn btn-primary" onclick="exportXLSX()" style="margin-top:4px">⬇ Scarica XLSX</button>
+    <button class="btn btn-secondary" onclick="clearDay()" style="margin-top:10px">🗑 Cancella tutto oggi</button>
+  </div>
+
+  <!-- ══ TAB: GESTIONE (reparti + attività + operatori) ══ -->
+  <div id="tab-settings" class="section">
+    <h2>Operatori</h2>
+    <div id="workerPills" class="pill-list"></div>
+    <div style="display:flex;gap:8px;margin-bottom:24px">
+      <input type="text" id="newWorker" placeholder="Nome operatore…" style="margin-bottom:0;flex:1">
+      <button class="btn btn-primary btn-xs" onclick="addWorker()">+</button>
+    </div>
+
+    <h2>Reparti e attività</h2>
+    <div id="deptList"></div>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="newDept" placeholder="Nuovo reparto…" style="margin-bottom:0;flex:1">
+      <button class="btn btn-primary btn-xs" onclick="addDept()">+</button>
+    </div>
+  </div>
+
+  <!-- ══ TAB: UTENTI (solo admin) ══ -->
+  <div id="tab-accounts" class="section">
+    <h2>Account di accesso</h2>
+    <div id="accountList"></div>
+    <button class="btn btn-primary" onclick="openNewAccount()" style="margin-top:8px">+ Nuovo account</button>
+
+    <!-- form nuovo/modifica account -->
+    <div id="accountForm" class="card" style="display:none;margin-top:14px">
+      <h2 id="accountFormTitle" style="margin-bottom:14px">Nuovo account</h2>
+      <input type="hidden" id="editAccountId">
+      <label>Username</label>
+      <input type="text" id="accUser" placeholder="username…">
+      <label>Password</label>
+      <input type="password" id="accPass" placeholder="lascia vuoto per non cambiare">
+      <label>Ruolo</label>
+      <select id="accRole" onchange="renderDeptCheckboxes()">
+        <option value="op">Operatore</option>
+        <option value="amm">Amministrativo</option>
+        <option value="admin">Admin</option>
+      </select>
+      <div id="deptCheckboxSection" style="display:none;margin-bottom:14px">
+        <label style="margin-bottom:8px">Reparti assegnati</label>
+        <div id="deptCheckboxes" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" style="flex:1" onclick="saveAccount()">✓ Salva</button>
+        <button class="btn btn-secondary" style="flex:1" onclick="closeAccountForm()">Annulla</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════
+const DEFAULT_DEPTS = [
+  { name: 'Reparto A',       activities: ['Produzione', 'Manutenzione'] },
+  { name: 'Reparto B',       activities: ['Magazzino',  'Spedizioni']   },
+  { name: 'Amministrazione', activities: ['Ufficio']                    }
+];
+const DEFAULT_ACCOUNTS = [
+  { id: 'admin', username: 'admin', password: 'admin123', role: 'admin', depts: [] }
+];
+
+let state = {
+  workers: ['Mario Rossi', 'Laura Bianchi', 'Luca Verdi'], // operatori (non account di accesso)
+  depts:   DEFAULT_DEPTS.map(d => ({ ...d, activities: [...d.activities] })),
+  events:  [],
+  accounts: [...DEFAULT_ACCOUNTS.map(a => ({...a}))]
+};
+const SK = 'shiftlog_v1';
+const SESSION_SK = 'shiftlog_session';
+
+let session = null; // { id, username, role, depts[] }
+let _shiftAction = null;
+let _editingLogId = null;
+
+// ══════════════════════════════════════════════
+//  PERSIST
+// ══════════════════════════════════════════════
+function load() {
+  try {
+    const s = localStorage.getItem(SK);
+    if (s) {
+      const p = JSON.parse(s);
+      state = { ...state, ...p };
+      if (!Array.isArray(state.depts) || (state.depts[0] && typeof state.depts[0] === 'string'))
+        state.depts = DEFAULT_DEPTS.map(d => ({ ...d, activities: [...d.activities] }));
+      if (!Array.isArray(state.accounts)) state.accounts = [...DEFAULT_ACCOUNTS];
+      if (!Array.isArray(state.workers))  state.workers  = [];
+    }
+  } catch(e) {}
+}
+function save() { localStorage.setItem(SK, JSON.stringify(state)); }
+
+function loadSession() {
+  try { const s = localStorage.getItem(SESSION_SK); if (s) session = JSON.parse(s); } catch(e) {}
+}
+function saveSession() { localStorage.setItem(SESSION_SK, JSON.stringify(session)); }
+function clearSession() { session = null; localStorage.removeItem(SESSION_SK); }
+
+// ══════════════════════════════════════════════
+//  UTILS
+// ══════════════════════════════════════════════
+function today() { return new Date().toISOString().slice(0,10); }
+function now()   { return new Date().toTimeString().slice(0,5); }
+function t2m(t)  { const [h,m] = t.split(':').map(Number); return h*60+m; }
+function fmtHours(mins) { if (!mins) return '—'; return (mins/60).toFixed(2)+'h'; }
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2400);
+}
+
+// permission helpers
+function isAdmin()  { return session?.role === 'admin'; }
+function isAmm()    { return session?.role === 'amm'; }
+function isOp()     { return session?.role === 'op'; }
+function canManage(){ return isAdmin() || isAmm() || isOp(); }
+
+// returns depts visible to current session
+function visibleDepts() {
+  if (isAdmin()) return state.depts;
+  if (!session?.depts?.length) return [];
+  return state.depts.filter(d => session.depts.includes(d.name));
+}
+
+// ══════════════════════════════════════════════
+//  LOGIN
+// ══════════════════════════════════════════════
+function doLogin() {
+  const username = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value;
+  const acc = state.accounts.find(a => a.username === username && a.password === password);
+  if (!acc) {
+    document.getElementById('loginError').textContent = 'Username o password errati';
+    return;
+  }
+  session = { id: acc.id, username: acc.username, role: acc.role, depts: acc.depts || [] };
+  saveSession();
+  document.getElementById('loginScreen').style.display = 'none';
+  initApp();
+  showToast(`👋 Benvenuto, ${acc.username}`);
+}
+
+document.getElementById('loginPass').addEventListener('keydown', e => e.key === 'Enter' && doLogin());
+document.getElementById('loginUser').addEventListener('keydown', e => e.key === 'Enter' && document.getElementById('loginPass').focus());
+
+function doLogout() {
+  if (!confirm('Vuoi uscire?')) return;
+  clearSession();
+  // reset UI
+  document.getElementById('userBadge').style.display = 'none';
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+  document.getElementById('loginError').textContent = '';
+  // reset nav: mostra tutti i bottoni e togli active
+  document.querySelectorAll('#mainNav button').forEach(b => {
+    b.style.display = '';
+    b.classList.remove('active');
+  });
+  document.querySelectorAll('#mainNav button')[0].classList.add('active');
+  // reset tabs
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('tab-log').classList.add('active');
+  // chiudi pannello turno se aperto
+  document.getElementById('shiftPanel').style.display = 'none';
+  document.getElementById('shiftBtn').style.display = '';
+  // mostra login
+  document.getElementById('loginScreen').style.display = 'flex';
+}
+
+// ══════════════════════════════════════════════
+//  INIT APP (post-login)
+// ══════════════════════════════════════════════
+function initApp() {
+  // header badge
+  document.getElementById('userBadgeName').textContent = session.username;
+  document.getElementById('userBadge').style.display = 'flex';
+
+  // nav visibility
+  document.querySelectorAll('#mainNav button').forEach(btn => {
+    const roles = btn.dataset.roles.split(',');
+    btn.style.display = roles.includes(session.role) ? '' : 'none';
+  });
+
+  // reset to first visible tab
+  const firstVisible = [...document.querySelectorAll('#mainNav button')].find(b => b.style.display !== 'none');
+  if (firstVisible) {
+    document.querySelectorAll('#mainNav button').forEach(b => b.classList.remove('active'));
+    firstVisible.classList.add('active');
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.getElementById('tab-' + firstVisible.getAttribute('onclick').match(/'(\w+)'/)[1]).classList.add('active');
+  }
+
+  populateSelects();
+  renderShiftBar();
+  updateImputeBtn();
+  renderSettings();
+  if (isAdmin()) renderAccounts();
+}
+
+// ══════════════════════════════════════════════
+//  TABS
+// ══════════════════════════════════════════════
+function showTab(name, btn) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'today')    renderToday();
+  if (name === 'report')   renderReport();
+  if (name === 'settings') renderSettings();
+  if (name === 'accounts') renderAccounts();
+}
+
+// ══════════════════════════════════════════════
+//  SELECTS
+// ══════════════════════════════════════════════
+function getDept(name) { return state.depts.find(d => d.name === name); }
+
+function populateSelects() {
+  const vd = visibleDepts();
+  const d = document.getElementById('selDept'), pd = d.value;
+  d.innerHTML = vd.map(x => `<option>${x.name}</option>`).join('');
+  if (vd.find(x => x.name === pd)) d.value = pd;
+
+  const u = document.getElementById('selUser'), pu = u.value;
+  u.innerHTML = state.workers.map(x => `<option>${x}</option>`).join('');
+  if (state.workers.includes(pu)) u.value = pu;
+
+  filterActivitiesByDept();
+}
+
+function filterActivitiesByDept() {
+  const deptName = document.getElementById('selDept').value;
+  const dept = getDept(deptName);
+  const acts = dept ? dept.activities : [];
+  const a = document.getElementById('selActivity'), pa = a.value;
+  a.innerHTML = acts.length
+    ? acts.map(x => `<option>${x}</option>`).join('')
+    : `<option disabled>— nessuna attività —</option>`;
+  if (acts.includes(pa)) a.value = pa;
+}
+
+// ══════════════════════════════════════════════
+//  SHIFT
+// ══════════════════════════════════════════════
+function getShift(type) { return state.events.find(e => e.date === today() && e.type === type); }
+
+function openShiftPanel() {
+  const start = getShift('shift_start'), end = getShift('shift_end');
+  if (start && end) { resetShift(); return; }
+  _shiftAction = !start ? 'start' : 'end';
+  document.getElementById('shiftPanelLabel').textContent =
+    _shiftAction === 'start' ? 'Orario inizio turno' : 'Orario fine turno';
+  document.getElementById('shiftTime').value = now();
+  document.getElementById('shiftPanel').style.display = 'block';
+  document.getElementById('shiftBtn').style.display = 'none';
+}
+
+function closeShiftPanel() {
+  document.getElementById('shiftPanel').style.display = 'none';
+  document.getElementById('shiftBtn').style.display = '';
+  _shiftAction = null;
+}
+
+function confirmShift() {
+  const time = document.getElementById('shiftTime').value || now();
+  if (_shiftAction === 'start') {
+    state.events.push({ id: Date.now(), type: 'shift_start', time, date: today() });
+    save(); closeShiftPanel(); renderShiftBar(); updateImputeBtn();
+    showToast('🟢 Turno avviato alle ' + time);
+  } else {
+    const start = getShift('shift_start');
+    if (start && time <= start.time) { showToast('⚠️ Orario fine prima dell\'inizio'); return; }
+    state.events.push({ id: Date.now(), type: 'shift_end', time, date: today() });
+    save(); closeShiftPanel(); renderShiftBar(); updateImputeBtn();
+    if (document.getElementById('tab-today').classList.contains('active')) renderToday();
+    showToast('🔴 Turno terminato alle ' + time);
+  }
+}
+
+function resetShift() {
+  if (!confirm('Azzerare il turno e ricominciare?')) return;
+  state.events = state.events.filter(e => e.date !== today() || e.type === 'imputation');
+  save(); renderShiftBar(); updateImputeBtn();
+  showToast('Turno azzerato');
+}
+
+function renderShiftBar() {
+  const start = getShift('shift_start'), end = getShift('shift_end');
+  const bar = document.getElementById('shiftBar');
+  const info = document.getElementById('shiftInfo');
+  const btn  = document.getElementById('shiftBtn');
+  closeShiftPanel();
+  if (!start) {
+    bar.className = 'shift-bar'; info.innerHTML = 'Turno non avviato';
+    btn.textContent = 'Inizio turno'; btn.className = 'btn btn-warn btn-xs'; btn.style.display = '';
+  } else if (!end) {
+    bar.className = 'shift-bar on';
+    info.innerHTML = `Turno iniziato alle <strong>${start.time}</strong>`;
+    btn.textContent = 'Fine turno'; btn.className = 'btn btn-warn btn-xs'; btn.style.display = '';
+  } else {
+    bar.className = 'shift-bar done';
+    info.innerHTML = `Turno: <strong>${start.time}</strong> → <strong>${end.time}</strong>`;
+    btn.textContent = '↺ Nuovo turno'; btn.className = 'btn btn-secondary btn-xs'; btn.style.display = '';
+  }
+}
+
+function updateImputeBtn() {
+  const btn  = document.getElementById('btnImpute');
+  const warn = document.getElementById('shiftWarning');
+  const active = getShift('shift_start') && !getShift('shift_end');
+  btn.disabled = !active; btn.style.opacity = active ? '1' : '.45'; btn.style.cursor = active ? 'pointer' : 'not-allowed';
+  warn.style.display = active ? 'none' : 'block';
+}
+
+// ══════════════════════════════════════════════
+//  IMPUTATION
+// ══════════════════════════════════════════════
+function addImputation() {
+  if (!getShift('shift_start') || getShift('shift_end')) { showToast('⚠️ Avvia il turno prima'); return; }
+  const dept     = document.getElementById('selDept').value;
+  const user     = document.getElementById('selUser').value;
+  const activity = document.getElementById('selActivity').value;
+  const time     = document.getElementById('timeImpute').value || now();
+  if (!dept || !user || !activity) { showToast('Compila tutti i campi'); return; }
+  state.events.push({ id: Date.now(), type: 'imputation', dept, user, activity, time, date: today() });
+  save();
+  document.getElementById('timeImpute').value = '';
+  showToast(`✅ ${user} → ${activity} alle ${time}`);
+}
+
+// ══════════════════════════════════════════════
+//  COMPUTE DURATIONS
+// ══════════════════════════════════════════════
+function computeToday() {
+  const vdNames = visibleDepts().map(d => d.name);
+  const evs = state.events
+    .filter(e => e.date === today())
+    .sort((a,b) => t2m(a.time)-t2m(b.time));
+  const allImps  = evs.filter(e => e.type === 'imputation');
+  const shiftEnd = evs.find(e => e.type === 'shift_end');
+
+  // filter imputations by visible depts (non-admin)
+  const imps = isAdmin() ? allImps : allImps.filter(i => vdNames.includes(i.dept));
+
+  return imps.map((imp, i) => {
+    const nextImp = allImps[allImps.indexOf(imp) + 1]; // use ALL imps for time calc
+    const candidates = [nextImp, shiftEnd]
+      .filter(c => c && t2m(c.time) > t2m(imp.time))
+      .sort((a,b) => t2m(a.time)-t2m(b.time));
+    return { ...imp, mins: candidates[0] ? t2m(candidates[0].time) - t2m(imp.time) : null };
+  });
+}
+
+// ══════════════════════════════════════════════
+//  TAB: OGGI
+// ══════════════════════════════════════════════
+function renderToday() {
+  const computed = computeToday();
+  const byId = Object.fromEntries(computed.map(r => [r.id, r]));
+  const vdNames = visibleDepts().map(d => d.name);
+
+  const allEvs = state.events
+    .filter(e => e.date === today())
+    .sort((a,b) => t2m(a.time)-t2m(b.time));
+
+  const container = document.getElementById('todayList');
+  if (!allEvs.length) { container.innerHTML = `<div class="empty"><div class="empty-icon">📋</div>Nessuna imputazione oggi</div>`; return; }
+
+  let html = '';
+  allEvs.forEach(ev => {
+    if (ev.type === 'shift_start' || ev.type === 'shift_end') {
+      const label = ev.type === 'shift_start' ? '🟢 Inizio turno' : '🔴 Fine turno';
+      html += `<div class="log-item is-shift"><div class="log-dot shift-marker"></div><div class="log-body"><div class="log-activity shift-label">${label}</div><div class="log-time">${ev.time}</div></div></div>`;
+      return;
+    }
+    // hide depts not visible
+    if (!isAdmin() && !vdNames.includes(ev.dept)) return;
+
+    const r = byId[ev.id];
+    const mins = r?.mins ?? null;
+
+    if (_editingLogId === ev.id) {
+      const opts = (getDept(ev.dept)?.activities || []).map(a => `<option value="${a}"${a===ev.activity?' selected':''}>${a}</option>`).join('');
+      html += `<div class="edit-row"><label>${ev.dept} · ${ev.user} — ${ev.time}</label><select id="editSel_${ev.id}">${opts}</select><div class="edit-row-btns"><button class="btn btn-primary" onclick="saveEdit(${ev.id})">✓ Salva</button><button class="btn btn-secondary" onclick="cancelEdit()">Annulla</button></div></div>`;
+    } else {
+      html += `<div class="log-item">
+        <div class="log-dot"></div>
+        <div class="log-body">
+          <div style="font-size:.68rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:1px">${ev.dept}</div>
+          <div class="log-user">${ev.user}</div>
+          <div class="log-activity">${ev.activity}</div>
+          <div class="log-time">🕐 ${ev.time}</div>
+          ${mins!==null?`<div class="log-duration">⏱ ${fmtHours(mins)}</div>`:''}
+        </div>
+        <div class="log-actions">
+          <button class="btn btn-edit" onclick="startEdit(${ev.id})">✎</button>
+          <button class="btn btn-danger" onclick="deleteLog(${ev.id})">✕</button>
+        </div>
+      </div>`;
+    }
+  });
+  container.innerHTML = html || `<div class="empty"><div class="empty-icon">📋</div>Nessuna imputazione visibile</div>`;
+}
+
+function startEdit(id)  { _editingLogId = id; renderToday(); }
+function cancelEdit()   { _editingLogId = null; renderToday(); }
+function saveEdit(id) {
+  const sel = document.getElementById(`editSel_${id}`);
+  const ev  = state.events.find(e => e.id === id);
+  if (ev && sel) { ev.activity = sel.value; save(); }
+  _editingLogId = null; renderToday(); showToast('✅ Attività aggiornata');
+}
+function deleteLog(id) {
+  state.events = state.events.filter(e => e.id !== id);
+  save(); renderToday(); showToast('Imputazione eliminata');
+}
+
+// ══════════════════════════════════════════════
+//  REPORT
+// ══════════════════════════════════════════════
+function renderReport() {
+  const rows = computeToday();
+  const container = document.getElementById('reportSummary');
+  if (!rows.length) { container.innerHTML = `<div class="empty"><div class="empty-icon">📊</div>Nessuna imputazione ancora</div>`; return; }
+
+  const withDur = rows.filter(r => r.mins !== null);
+  const totalMins = withDur.reduce((s,r) => s+r.mins, 0);
+
+  const tree = {};
+  withDur.forEach(r => {
+    const dk = r.dept||'—';
+    if (!tree[dk]) tree[dk] = {};
+    if (!tree[dk][r.user]) tree[dk][r.user] = {};
+    tree[dk][r.user][r.activity] = (tree[dk][r.user][r.activity]||0) + r.mins;
+  });
+
+  const start = getShift('shift_start'), end = getShift('shift_end');
+  const shiftStr = start ? `${start.time}${end?' → '+end.time:' → in corso'}` : '—';
+
+  let treeHtml = '';
+  Object.entries(tree).forEach(([dept, users]) => {
+    const deptMins = Object.values(users).reduce((s,acts) => s+Object.values(acts).reduce((ss,m)=>ss+m,0),0);
+    treeHtml += `<div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface2);border-radius:8px;margin-bottom:6px">
+        <div style="font-weight:700;font-size:.88rem">📁 ${dept}</div>
+        <div style="font-family:'DM Mono',monospace;font-size:.82rem;color:var(--warn)">${fmtHours(deptMins)}</div>
+      </div>`;
+    Object.entries(users).forEach(([user, acts]) => {
+      const userMins = Object.values(acts).reduce((s,m)=>s+m,0);
+      treeHtml += `<div style="padding:0 6px;margin-bottom:4px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-left:2px solid var(--accent)">
+          <div style="font-weight:600;font-size:.85rem;color:var(--accent)">👤 ${user}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:.8rem;color:var(--accent)">${fmtHours(userMins)}</div>
+        </div>`;
+      Object.entries(acts).forEach(([act, mins]) => {
+        treeHtml += `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px 5px 20px;border-bottom:1px solid var(--border)">
+          <div style="font-size:.82rem;color:var(--muted)">↳ ${act}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:.78rem;color:var(--text)">${fmtHours(mins)}</div>
+        </div>`;
+      });
+      treeHtml += `</div>`;
+    });
+    treeHtml += `</div>`;
+  });
+
+  container.innerHTML = `
+    <div style="margin-bottom:12px">
+      <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Turno</div>
+      <div style="font-family:'DM Mono',monospace;font-size:.9rem;color:var(--warn)">${shiftStr}</div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Totale tracciato</div>
+      <div style="font-family:'DM Mono',monospace;font-size:1.5rem;font-weight:500;color:var(--accent)">${fmtHours(totalMins)}</div>
+      <div style="font-size:.77rem;color:var(--muted);margin-top:2px">${rows.length} imputazioni · ${withDur.length} con durata</div>
+    </div>
+    <div class="sep"></div>
+    ${treeHtml}`;
+}
+
+// ══════════════════════════════════════════════
+//  EXPORT XLSX
+// ══════════════════════════════════════════════
+function exportXLSX() {
+  const rows = computeToday();
+  if (!rows.length) { showToast('Nessuna imputazione da esportare'); return; }
+  const wb = XLSX.utils.book_new();
+
+  const ws1 = XLSX.utils.aoa_to_sheet([
+    ['DATA','REPARTO','OPERATORE','ATTIVITÀ','ORA REGISTRAZIONE','DURATA (min)','DURATA (h)'],
+    ...rows.map(r => [r.date, r.dept||'—', r.user, r.activity, r.time,
+      r.mins??'', r.mins!=null?(r.mins/60).toFixed(2):'—'])
+  ]);
+  ws1['!cols'] = [{wch:12},{wch:18},{wch:20},{wch:20},{wch:18},{wch:13},{wch:12}];
+
+  const tree = {};
+  rows.filter(r=>r.mins!=null).forEach(r => {
+    const dk=r.dept||'—';
+    if(!tree[dk]) tree[dk]={};
+    if(!tree[dk][r.user]) tree[dk][r.user]={};
+    tree[dk][r.user][r.activity]=(tree[dk][r.user][r.activity]||0)+r.mins;
+  });
+  const ws2rows = [['REPARTO','OPERATORE','ATTIVITÀ','DURATA (min)','DURATA (h)']];
+  Object.entries(tree).forEach(([dept,users]) =>
+    Object.entries(users).forEach(([user,acts]) =>
+      Object.entries(acts).forEach(([act,mins]) =>
+        ws2rows.push([dept,user,act,mins,(mins/60).toFixed(2)]))));
+  const ws2 = XLSX.utils.aoa_to_sheet(ws2rows);
+  ws2['!cols'] = [{wch:18},{wch:20},{wch:20},{wch:13},{wch:12}];
+
+  const s = getShift('shift_start'), e = getShift('shift_end');
+  const ws3 = XLSX.utils.aoa_to_sheet([['DATA','INIZIO TURNO','FINE TURNO'],[today(),s?s.time:'—',e?e.time:'—']]);
+  ws3['!cols'] = [{wch:12},{wch:14},{wch:12}];
+
+  XLSX.utils.book_append_sheet(wb, ws1, 'Dettaglio');
+  XLSX.utils.book_append_sheet(wb, ws2, 'Riepilogo');
+  XLSX.utils.book_append_sheet(wb, ws3, 'Turno');
+
+  const filename = `shiftlog_${today()}.xlsx`;
+  const wbout = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+  const blob = new Blob([wbout], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=filename; a.style.display='none';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+  showToast('📥 File pronto — controlla Download');
+}
+
+// ══════════════════════════════════════════════
+//  CLEAR DAY
+// ══════════════════════════════════════════════
+function clearDay() {
+  if (!confirm('Eliminare tutte le imputazioni e il turno di oggi?')) return;
+  state.events = state.events.filter(e => e.date !== today());
+  save(); renderReport(); renderShiftBar(); updateImputeBtn();
+  showToast('🗑 Giornata azzerata');
+}
+
+// ══════════════════════════════════════════════
+//  TAB: GESTIONE (workers + depts)
+// ══════════════════════════════════════════════
+function renderSettings() {
+  // workers
+  document.getElementById('workerPills').innerHTML = state.workers.map(w =>
+    `<span class="pill">${w} <span class="pill-remove" onclick="removeWorker('${w.replace(/'/g,"\\'")}')">×</span></span>`
+  ).join('') || '<span style="font-size:.82rem;color:var(--muted)">Nessun operatore</span>';
+
+  // depts visible to this user
+  const vd = visibleDepts();
+  document.getElementById('deptList').innerHTML = vd.map((d, di) => {
+    const realDi = state.depts.indexOf(d);
+    return `<div class="dept-card">
+      <div class="dept-card-header">
+        <div class="dept-card-name">📁 ${d.name}</div>
+        ${isAdmin() ? `<button class="btn btn-danger" onclick="removeDept(${realDi})">✕</button>` : ''}
+      </div>
+      <div class="pill-list" style="margin-bottom:0">
+        ${d.activities.map((a,ai) =>
+          `<span class="pill">${a} <span class="pill-remove" onclick="removeActivity(${realDi},${ai})">×</span></span>`
+        ).join('') || '<span style="font-size:.78rem;color:var(--muted)">Nessuna attività</span>'}
+      </div>
+      <div class="dept-add-row">
+        <input type="text" id="newAct_${realDi}" placeholder="Nuova attività…">
+        <button class="btn btn-primary btn-xs" onclick="addActivity(${realDi})">+</button>
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty" style="padding:20px"><div class="empty-icon">📁</div>Nessun reparto assegnato</div>';
+
+  // show/hide add-dept row only for admin
+  document.querySelector('[onclick="addDept()"]').parentElement.style.display = isAdmin() ? 'flex' : 'none';
+  document.querySelector('[onclick="addDept()"]').closest('div').previousElementSibling?.style && (document.querySelector('[onclick="addDept()"]').closest('div').style.display = isAdmin() ? 'flex' : 'none');
+}
+
+function addWorker() {
+  const val = document.getElementById('newWorker').value.trim();
+  if (!val) return;
+  if (state.workers.includes(val)) { showToast('Operatore già presente'); return; }
+  state.workers.push(val);
+  document.getElementById('newWorker').value = '';
+  save(); populateSelects(); renderSettings(); showToast(`✅ ${val} aggiunto`);
+}
+function removeWorker(w) {
+  state.workers = state.workers.filter(x => x !== w);
+  save(); populateSelects(); renderSettings();
+}
+function addDept() {
+  const val = document.getElementById('newDept').value.trim();
+  if (!val || state.depts.find(d=>d.name===val)) { showToast(val?'Reparto già presente':''); return; }
+  state.depts.push({ name: val, activities: [] });
+  document.getElementById('newDept').value = '';
+  save(); populateSelects(); renderSettings(); showToast(`✅ Reparto "${val}" aggiunto`);
+}
+function removeDept(di) {
+  if (!isAdmin()) return;
+  const name = state.depts[di].name;
+  state.depts.splice(di, 1);
+  save(); populateSelects(); renderSettings(); showToast(`Reparto "${name}" eliminato`);
+}
+function addActivity(di) {
+  const input = document.getElementById(`newAct_${di}`);
+  const val = input?.value.trim();
+  if (!val) return;
+  if (state.depts[di].activities.includes(val)) { showToast('Attività già presente'); return; }
+  state.depts[di].activities.push(val);
+  save(); populateSelects(); renderSettings(); showToast(`✅ "${val}" aggiunta`);
+}
+function removeActivity(di, ai) {
+  state.depts[di].activities.splice(ai, 1);
+  save(); populateSelects(); renderSettings();
+}
+
+document.getElementById('newWorker').addEventListener('keydown', e => e.key==='Enter' && addWorker());
+document.getElementById('newDept').addEventListener('keydown',   e => e.key==='Enter' && addDept());
+
+// ══════════════════════════════════════════════
+//  TAB: ACCOUNT (solo admin)
+// ══════════════════════════════════════════════
+function roleLabel(role) {
+  if (role==='admin') return '<span class="role-badge role-admin">Admin</span>';
+  if (role==='amm')   return '<span class="role-badge role-amm">Amministrativo</span>';
+  return '<span class="role-badge role-op">Operatore</span>';
+}
+
+function renderAccounts() {
+  const container = document.getElementById('accountList');
+  container.innerHTML = state.accounts.map(acc => `
+    <div class="account-card">
+      <div class="account-avatar">${acc.username.charAt(0).toUpperCase()}</div>
+      <div class="account-info">
+        <div class="account-name">${acc.username} ${roleLabel(acc.role)}</div>
+        <div class="account-meta">${acc.role==='admin'?'Tutti i reparti':(acc.depts?.length?acc.depts.join(', '):'Nessun reparto')}</div>
+      </div>
+      <div class="account-actions">
+        <button class="btn btn-edit" onclick="openEditAccount('${acc.id}')">✎</button>
+        ${acc.id!=='admin'?`<button class="btn btn-danger" onclick="deleteAccount('${acc.id}')">✕</button>`:''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function openNewAccount() {
+  document.getElementById('accountFormTitle').textContent = 'Nuovo account';
+  document.getElementById('editAccountId').value = '';
+  document.getElementById('accUser').value = '';
+  document.getElementById('accPass').value = '';
+  document.getElementById('accRole').value = 'op';
+  renderDeptCheckboxes();
+  document.getElementById('accountForm').style.display = 'block';
+  document.getElementById('accountForm').scrollIntoView({ behavior:'smooth' });
+}
+
+function openEditAccount(id) {
+  const acc = state.accounts.find(a=>a.id===id);
+  if (!acc) return;
+  document.getElementById('accountFormTitle').textContent = 'Modifica account';
+  document.getElementById('editAccountId').value = id;
+  document.getElementById('accUser').value = acc.username;
+  document.getElementById('accPass').value = '';
+  document.getElementById('accRole').value = acc.role;
+  renderDeptCheckboxes(acc.depts||[]);
+  document.getElementById('accountForm').style.display = 'block';
+  document.getElementById('accountForm').scrollIntoView({ behavior:'smooth' });
+}
+
+function closeAccountForm() {
+  document.getElementById('accountForm').style.display = 'none';
+}
+
+function renderDeptCheckboxes(selected=[]) {
+  const role = document.getElementById('accRole').value;
+  const section = document.getElementById('deptCheckboxSection');
+  if (role === 'admin') { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  document.getElementById('deptCheckboxes').innerHTML = state.depts.map(d => `
+    <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border-radius:8px;cursor:pointer;text-transform:none;font-size:.88rem;font-weight:600;color:var(--text);letter-spacing:0">
+      <input type="checkbox" value="${d.name}" ${selected.includes(d.name)?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);margin:0">
+      ${d.name}
+    </label>
+  `).join('');
+}
+
+function saveAccount() {
+  const id       = document.getElementById('editAccountId').value;
+  const username = document.getElementById('accUser').value.trim();
+  const password = document.getElementById('accPass').value;
+  const role     = document.getElementById('accRole').value;
+  if (!username) { showToast('Inserisci username'); return; }
+
+  const depts = role === 'admin' ? [] :
+    [...document.querySelectorAll('#deptCheckboxes input:checked')].map(cb => cb.value);
+
+  if (id) {
+    // edit
+    const acc = state.accounts.find(a=>a.id===id);
+    if (!acc) return;
+    if (state.accounts.some(a=>a.username===username && a.id!==id)) { showToast('Username già in uso'); return; }
+    acc.username = username;
+    if (password) acc.password = password;
+    acc.role = role; acc.depts = depts;
+    showToast(`✅ Account "${username}" aggiornato`);
+  } else {
+    // new
+    if (state.accounts.some(a=>a.username===username)) { showToast('Username già in uso'); return; }
+    if (!password) { showToast('Inserisci una password'); return; }
+    state.accounts.push({ id: 'u_'+Date.now(), username, password, role, depts });
+    showToast(`✅ Account "${username}" creato`);
+  }
+  save(); closeAccountForm(); renderAccounts();
+}
+
+function deleteAccount(id) {
+  if (id==='admin') { showToast('Non puoi eliminare l\'admin'); return; }
+  const acc = state.accounts.find(a=>a.id===id);
+  if (!confirm(`Eliminare l'account "${acc?.username}"?`)) return;
+  state.accounts = state.accounts.filter(a=>a.id!==id);
+  save(); renderAccounts(); showToast('Account eliminato');
+}
+
+// ══════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════
+document.getElementById('headerDate').textContent =
+  new Date().toLocaleDateString('it-IT', { day:'numeric', month:'short' });
+load();
+loadSession();
+if (session) {
+  document.getElementById('loginScreen').style.display = 'none';
+  initApp();
+}
+</script>
+</body>
+</html>
