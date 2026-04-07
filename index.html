@@ -255,7 +255,7 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
     <button class="btn btn-secondary" onclick="clearDay()" style="margin-top:10px">🗑 Cancella tutto oggi</button>
   </div>
 
-  <!-- ══ TAB: GESTIONE (reparti + attività + operatori) ══ -->
+  <!-- ══ TAB: GESTIONE ══ -->
   <div id="tab-settings" class="section">
     <h2>Operatori</h2>
     <div id="workerPills" class="pill-list"></div>
@@ -264,11 +264,11 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
       <button class="btn btn-primary btn-xs" onclick="addWorker()">+</button>
     </div>
 
-    <h2>Reparti e attività</h2>
-    <div id="deptList"></div>
-    <div style="display:flex;gap:8px">
-      <input type="text" id="newDept" placeholder="Nuovo reparto…" style="margin-bottom:0;flex:1">
-      <button class="btn btn-primary btn-xs" onclick="addDept()">+</button>
+    <h2>Appalti, reparti e attività</h2>
+    <div id="contractList"></div>
+    <div id="addContractRow" style="display:flex;gap:8px">
+      <input type="text" id="newContract" placeholder="Nuovo appalto…" style="margin-bottom:0;flex:1">
+      <button class="btn btn-primary btn-xs" onclick="addContract()">+</button>
     </div>
   </div>
 
@@ -293,7 +293,7 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
         <option value="admin">Admin</option>
       </select>
       <div id="deptCheckboxSection" style="display:none;margin-bottom:14px">
-        <label style="margin-bottom:8px">Reparti assegnati</label>
+        <label style="margin-bottom:8px">Appalti assegnati</label>
         <div id="deptCheckboxes" style="display:flex;flex-direction:column;gap:8px"></div>
       </div>
       <div style="display:flex;gap:8px">
@@ -311,25 +311,35 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 // ══════════════════════════════════════════════
 //  STATE
 // ══════════════════════════════════════════════
-const DEFAULT_DEPTS = [
-  { name: 'Reparto A',       activities: ['Produzione', 'Manutenzione'] },
-  { name: 'Reparto B',       activities: ['Magazzino',  'Spedizioni']   },
-  { name: 'Amministrazione', activities: ['Ufficio']                    }
+const DEFAULT_CONTRACTS = [
+  {
+    name: 'Appalto 1',
+    depts: [
+      { name: 'Reparto A', activities: ['Produzione', 'Manutenzione'] },
+      { name: 'Reparto B', activities: ['Magazzino',  'Spedizioni']   }
+    ]
+  },
+  {
+    name: 'Appalto 2',
+    depts: [
+      { name: 'Amministrazione', activities: ['Ufficio'] }
+    ]
+  }
 ];
 const DEFAULT_ACCOUNTS = [
-  { id: 'admin', username: 'admin', password: 'admin123', role: 'admin', depts: [] }
+  { id: 'admin', username: 'admin', password: 'admin123', role: 'admin', contracts: [] }
 ];
 
 let state = {
-  workers: ['Mario Rossi', 'Laura Bianchi', 'Luca Verdi'], // operatori (non account di accesso)
-  depts:   DEFAULT_DEPTS.map(d => ({ ...d, activities: [...d.activities] })),
-  events:  [],
-  accounts: [...DEFAULT_ACCOUNTS.map(a => ({...a}))]
+  workers:   ['Mario Rossi', 'Laura Bianchi', 'Luca Verdi'],
+  contracts: DEFAULT_CONTRACTS.map(c => ({ ...c, depts: c.depts.map(d => ({ ...d, activities: [...d.activities] })) })),
+  events:    [],
+  accounts:  [...DEFAULT_ACCOUNTS.map(a => ({...a}))]
 };
-const SK = 'shiftlog_v1';
+const SK = 'shiftlog_v2';
 const SESSION_SK = 'shiftlog_session';
 
-let session = null; // { id, username, role, depts[] }
+let session = null; // { id, username, role, contracts[] }
 let _shiftAction = null;
 let _editingLogId = null;
 
@@ -342,10 +352,23 @@ function load() {
     if (s) {
       const p = JSON.parse(s);
       state = { ...state, ...p };
-      if (!Array.isArray(state.depts) || (state.depts[0] && typeof state.depts[0] === 'string'))
-        state.depts = DEFAULT_DEPTS.map(d => ({ ...d, activities: [...d.activities] }));
+      // retrocompat: se esiste ancora depts vecchio, migra a contracts
+      if (!Array.isArray(state.contracts)) {
+        const oldDepts = Array.isArray(state.depts) ? state.depts : [];
+        state.contracts = oldDepts.length
+          ? [{ name: 'Appalto 1', depts: oldDepts.map(d => typeof d === 'string' ? { name: d, activities: [] } : d) }]
+          : DEFAULT_CONTRACTS.map(c => ({ ...c, depts: c.depts.map(d => ({ ...d, activities: [...d.activities] })) }));
+        delete state.depts;
+      }
       if (!Array.isArray(state.accounts)) state.accounts = [...DEFAULT_ACCOUNTS];
       if (!Array.isArray(state.workers))  state.workers  = [];
+      // migra account.depts → account.contracts se necessario
+      state.accounts.forEach(a => {
+        if (!Array.isArray(a.contracts)) {
+          a.contracts = Array.isArray(a.depts) ? [] : [];
+          delete a.depts;
+        }
+      });
     }
   } catch(e) {}
 }
@@ -374,13 +397,29 @@ function showToast(msg) {
 function isAdmin()  { return session?.role === 'admin'; }
 function isAmm()    { return session?.role === 'amm'; }
 function isOp()     { return session?.role === 'op'; }
-function canManage(){ return isAdmin() || isAmm() || isOp(); }
 
-// returns depts visible to current session
-function visibleDepts() {
-  if (isAdmin()) return state.depts;
-  if (!session?.depts?.length) return [];
-  return state.depts.filter(d => session.depts.includes(d.name));
+// appalti visibili alla sessione corrente
+function visibleContracts() {
+  if (isAdmin()) return state.contracts;
+  if (!session?.contracts?.length) return [];
+  return state.contracts.filter(c => session.contracts.includes(c.name));
+}
+
+// trova reparto in qualsiasi appalto
+function findDept(deptName) {
+  for (const c of state.contracts) {
+    const d = c.depts.find(d => d.name === deptName);
+    if (d) return { contract: c, dept: d };
+  }
+  return null;
+}
+
+// trova appalto di un reparto
+function contractOfDept(deptName) {
+  for (const c of state.contracts) {
+    if (c.depts.find(d => d.name === deptName)) return c.name;
+  }
+  return '—';
 }
 
 // ══════════════════════════════════════════════
@@ -394,7 +433,7 @@ function doLogin() {
     document.getElementById('loginError').textContent = 'Username o password errati';
     return;
   }
-  session = { id: acc.id, username: acc.username, role: acc.role, depts: acc.depts || [] };
+  session = { id: acc.id, username: acc.username, role: acc.role, contracts: acc.contracts || [] };
   saveSession();
   document.getElementById('loginScreen').style.display = 'none';
   initApp();
@@ -482,18 +521,15 @@ function populateSelects() {
   const d = document.getElementById('selDept'), pd = d.value;
   d.innerHTML = vd.map(x => `<option>${x.name}</option>`).join('');
   if (vd.find(x => x.name === pd)) d.value = pd;
-
   // popola datalist operatori
-  const dl = document.getElementById('workerList');
-  dl.innerHTML = state.workers.map(x => `<option value="${x}">`).join('');
-
+  document.getElementById('workerList').innerHTML = state.workers.map(x => `<option value="${x}">`).join('');
   filterActivitiesByDept();
 }
 
 function filterActivitiesByDept() {
   const deptName = document.getElementById('selDept').value;
-  const dept = getDept(deptName);
-  const acts = dept ? dept.activities : [];
+  const found = findDept(deptName);
+  const acts = found ? found.dept.activities : [];
   const a = document.getElementById('selActivity'), pa = a.value;
   a.innerHTML = acts.length
     ? acts.map(x => `<option>${x}</option>`).join('')
@@ -584,9 +620,10 @@ function addImputation() {
   const activity = document.getElementById('selActivity').value;
   const time     = document.getElementById('timeImpute').value || now();
   if (!dept || !user || !activity) { showToast('Compila tutti i campi'); return; }
+  const contract = contractOfDept(dept);
   state.events.push({
     id: Date.now(), type: 'imputation',
-    dept, user, activity, time, date: today(),
+    contract, dept, user, activity, time, date: today(),
     registeredBy: session?.username || '—'
   });
   save();
@@ -604,18 +641,18 @@ function computeToday() {
     .sort((a,b) => t2m(a.time)-t2m(b.time));
   const allImps  = evs.filter(e => e.type === 'imputation');
   const shiftEnd = evs.find(e => e.type === 'shift_end');
-
-  // filter imputations by visible depts for non-admin
+  // filtra per reparti visibili (admin vede tutto)
   const imps = isAdmin() ? allImps : allImps.filter(i => vdNames.includes(i.dept));
-
   return imps.map((imp) => {
-    const nextImp = allImps[allImps.indexOf(imp) + 1]; // usa TUTTE le imp per calcolo tempo
+    const nextImp = allImps[allImps.indexOf(imp) + 1];
     const candidates = [nextImp, shiftEnd]
       .filter(c => c && t2m(c.time) > t2m(imp.time))
       .sort((a,b) => t2m(a.time)-t2m(b.time));
     const next = candidates[0];
     const mins = next ? t2m(next.time) - t2m(imp.time) : null;
-    return { ...imp, mins, endTime: next ? next.time : null };
+    // assicura che contract sia sempre valorizzato
+    const contract = imp.contract || contractOfDept(imp.dept);
+    return { ...imp, contract, mins, endTime: next ? next.time : null };
   });
 }
 
@@ -648,13 +685,13 @@ function renderToday() {
     const mins = r?.mins ?? null;
 
     if (_editingLogId === ev.id) {
-      const opts = (getDept(ev.dept)?.activities || []).map(a => `<option value="${a}"${a===ev.activity?' selected':''}>${a}</option>`).join('');
+      const opts = (findDept(ev.dept)?.dept?.activities || []).map(a => `<option value="${a}"${a===ev.activity?' selected':''}>${a}</option>`).join('');
       html += `<div class="edit-row"><label>${ev.dept} · ${ev.user} — ${ev.time}</label><select id="editSel_${ev.id}">${opts}</select><div class="edit-row-btns"><button class="btn btn-primary" onclick="saveEdit(${ev.id})">✓ Salva</button><button class="btn btn-secondary" onclick="cancelEdit()">Annulla</button></div></div>`;
     } else {
       html += `<div class="log-item">
         <div class="log-dot"></div>
         <div class="log-body">
-          <div style="font-size:.68rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:1px">${ev.dept}</div>
+          <div style="font-size:.66rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em">${ev.contract||contractOfDept(ev.dept)} · ${ev.dept}</div>
           <div class="log-user">${ev.user}</div>
           <div class="log-activity">${ev.activity}</div>
           <div class="log-time">🕐 ${ev.time}</div>
@@ -694,37 +731,51 @@ function renderReport() {
   const withDur = rows.filter(r => r.mins !== null);
   const totalMins = withDur.reduce((s,r) => s+r.mins, 0);
 
+  // Struttura: { [contract]: { [dept]: { [user]: { [activity]: mins } } } }
   const tree = {};
   withDur.forEach(r => {
+    const ck = r.contract || contractOfDept(r.dept) || '—';
     const dk = r.dept||'—';
-    if (!tree[dk]) tree[dk] = {};
-    if (!tree[dk][r.user]) tree[dk][r.user] = {};
-    tree[dk][r.user][r.activity] = (tree[dk][r.user][r.activity]||0) + r.mins;
+    if (!tree[ck]) tree[ck] = {};
+    if (!tree[ck][dk]) tree[ck][dk] = {};
+    if (!tree[ck][dk][r.user]) tree[ck][dk][r.user] = {};
+    tree[ck][dk][r.user][r.activity] = (tree[ck][dk][r.user][r.activity]||0) + r.mins;
   });
 
   const start = getShift('shift_start'), end = getShift('shift_end');
   const shiftStr = start ? `${start.time}${end?' → '+end.time:' → in corso'}` : '—';
 
   let treeHtml = '';
-  Object.entries(tree).forEach(([dept, users]) => {
-    const deptMins = Object.values(users).reduce((s,acts) => s+Object.values(acts).reduce((ss,m)=>ss+m,0),0);
-    treeHtml += `<div style="margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface2);border-radius:8px;margin-bottom:6px">
-        <div style="font-weight:700;font-size:.88rem">📁 ${dept}</div>
-        <div style="font-family:'DM Mono',monospace;font-size:.82rem;color:var(--warn)">${fmtHours(deptMins)}</div>
+  Object.entries(tree).forEach(([contract, depts]) => {
+    const contractMins = Object.values(depts).reduce((s,users) =>
+      s+Object.values(users).reduce((ss,acts) =>
+        ss+Object.values(acts).reduce((sss,m)=>sss+m,0),0),0);
+    treeHtml += `<div style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:#A4D20015;border:1px solid var(--accent);border-radius:10px;margin-bottom:6px">
+        <div style="font-weight:800;font-size:.9rem;color:var(--accent)">🏗 ${contract}</div>
+        <div style="font-family:'DM Mono',monospace;font-size:.82rem;color:var(--accent)">${fmtHours(contractMins)}</div>
       </div>`;
-    Object.entries(users).forEach(([user, acts]) => {
-      const userMins = Object.values(acts).reduce((s,m)=>s+m,0);
-      treeHtml += `<div style="padding:0 6px;margin-bottom:4px">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-left:2px solid var(--accent)">
-          <div style="font-weight:600;font-size:.85rem;color:var(--accent)">👤 ${user}</div>
-          <div style="font-family:'DM Mono',monospace;font-size:.8rem;color:var(--accent)">${fmtHours(userMins)}</div>
+    Object.entries(depts).forEach(([dept, users]) => {
+      const deptMins = Object.values(users).reduce((s,acts)=>s+Object.values(acts).reduce((ss,m)=>ss+m,0),0);
+      treeHtml += `<div style="margin-left:8px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:var(--surface2);border-radius:8px;margin-bottom:4px">
+          <div style="font-weight:700;font-size:.85rem">📁 ${dept}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:.8rem;color:var(--warn)">${fmtHours(deptMins)}</div>
         </div>`;
-      Object.entries(acts).forEach(([act, mins]) => {
-        treeHtml += `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px 5px 20px;border-bottom:1px solid var(--border)">
-          <div style="font-size:.82rem;color:var(--muted)">↳ ${act}</div>
-          <div style="font-family:'DM Mono',monospace;font-size:.78rem;color:var(--text)">${fmtHours(mins)}</div>
-        </div>`;
+      Object.entries(users).forEach(([user, acts]) => {
+        const userMins = Object.values(acts).reduce((s,m)=>s+m,0);
+        treeHtml += `<div style="margin-left:8px;margin-bottom:4px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;border-left:2px solid var(--accent)">
+            <div style="font-weight:600;font-size:.83rem;color:var(--accent)">👤 ${user}</div>
+            <div style="font-family:'DM Mono',monospace;font-size:.78rem;color:var(--accent)">${fmtHours(userMins)}</div>
+          </div>`;
+        Object.entries(acts).forEach(([act, mins]) => {
+          treeHtml += `<div style="display:flex;justify-content:space-between;padding:4px 8px 4px 18px;border-bottom:1px solid var(--border)">
+            <div style="font-size:.8rem;color:var(--muted)">↳ ${act}</div>
+            <div style="font-family:'DM Mono',monospace;font-size:.76rem;color:var(--text)">${fmtHours(mins)}</div>
+          </div>`;
+        });
+        treeHtml += `</div>`;
       });
       treeHtml += `</div>`;
     });
@@ -754,30 +805,33 @@ function exportXLSX() {
   const wb = XLSX.utils.book_new();
 
   const ws1 = XLSX.utils.aoa_to_sheet([
-    ['DATA','REPARTO','OPERATORE','ATTIVITÀ','ORA REGISTRAZIONE','ORA FINE','DURATA (min)','DURATA (h)','REGISTRATO DA'],
+    ['DATA','APPALTO','REPARTO','OPERATORE','ATTIVITÀ','ORA REGISTRAZIONE','ORA FINE','DURATA (min)','DURATA (h)','REGISTRATO DA'],
     ...rows.map(r => [
-      r.date, r.dept||'—', r.user, r.activity,
+      r.date, r.contract||contractOfDept(r.dept)||'—', r.dept||'—', r.user, r.activity,
       r.time, r.endTime||'—',
       r.mins??'', r.mins!=null?(r.mins/60).toFixed(2):'—',
       r.registeredBy||'—'
     ])
   ]);
-  ws1['!cols'] = [{wch:12},{wch:18},{wch:20},{wch:20},{wch:18},{wch:12},{wch:13},{wch:12},{wch:18}];
+  ws1['!cols'] = [{wch:12},{wch:16},{wch:16},{wch:18},{wch:20},{wch:18},{wch:12},{wch:13},{wch:12},{wch:18}];
 
-  const tree = {};
+  const tree2 = {};
   rows.filter(r=>r.mins!=null).forEach(r => {
+    const ck=r.contract||contractOfDept(r.dept)||'—';
     const dk=r.dept||'—';
-    if(!tree[dk]) tree[dk]={};
-    if(!tree[dk][r.user]) tree[dk][r.user]={};
-    tree[dk][r.user][r.activity]=(tree[dk][r.user][r.activity]||0)+r.mins;
+    if(!tree2[ck]) tree2[ck]={};
+    if(!tree2[ck][dk]) tree2[ck][dk]={};
+    if(!tree2[ck][dk][r.user]) tree2[ck][dk][r.user]={};
+    tree2[ck][dk][r.user][r.activity]=(tree2[ck][dk][r.user][r.activity]||0)+r.mins;
   });
-  const ws2rows = [['REPARTO','OPERATORE','ATTIVITÀ','DURATA (min)','DURATA (h)']];
-  Object.entries(tree).forEach(([dept,users]) =>
-    Object.entries(users).forEach(([user,acts]) =>
-      Object.entries(acts).forEach(([act,mins]) =>
-        ws2rows.push([dept,user,act,mins,(mins/60).toFixed(2)]))));
+  const ws2rows = [['APPALTO','REPARTO','OPERATORE','ATTIVITÀ','DURATA (min)','DURATA (h)']];
+  Object.entries(tree2).forEach(([c,depts]) =>
+    Object.entries(depts).forEach(([d,users]) =>
+      Object.entries(users).forEach(([u,acts]) =>
+        Object.entries(acts).forEach(([a,mins]) =>
+          ws2rows.push([c,d,u,a,mins,(mins/60).toFixed(2)])))));
   const ws2 = XLSX.utils.aoa_to_sheet(ws2rows);
-  ws2['!cols'] = [{wch:18},{wch:20},{wch:20},{wch:13},{wch:12}];
+  ws2['!cols'] = [{wch:16},{wch:16},{wch:18},{wch:20},{wch:13},{wch:12}];
 
   const s = getShift('shift_start'), e = getShift('shift_end');
   const ws3 = XLSX.utils.aoa_to_sheet([['DATA','INIZIO TURNO','FINE TURNO'],[today(),s?s.time:'—',e?e.time:'—']]);
@@ -868,21 +922,111 @@ function removeDept(di) {
   state.depts.splice(di, 1);
   save(); populateSelects(); renderSettings(); showToast(`Reparto "${name}" eliminato`);
 }
-function addActivity(di) {
-  const input = document.getElementById(`newAct_${di}`);
-  const val = input?.value.trim();
-  if (!val) return;
-  if (state.depts[di].activities.includes(val)) { showToast('Attività già presente'); return; }
-  state.depts[di].activities.push(val);
-  save(); populateSelects(); renderSettings(); showToast(`✅ "${val}" aggiunta`);
+// ══════════════════════════════════════════════
+//  TAB: GESTIONE
+// ══════════════════════════════════════════════
+function renderSettings() {
+  // workers
+  document.getElementById('workerPills').innerHTML = state.workers.map(w =>
+    `<span class="pill">${w} <span class="pill-remove" onclick="removeWorker('${w.replace(/'/g,"\\'")}')">×</span></span>`
+  ).join('') || '<span style="font-size:.82rem;color:var(--muted)">Nessun operatore</span>';
+
+  const vc = visibleContracts();
+  document.getElementById('contractList').innerHTML = vc.map((c, ci) => {
+    const realCi = state.contracts.indexOf(c);
+    return `<div style="background:var(--surface);border:1px solid var(--accent);border-radius:var(--radius);padding:14px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-weight:800;font-size:.95rem;color:var(--accent)">🏗 ${c.name}</div>
+        ${isAdmin()?`<button class="btn btn-danger" onclick="removeContract(${realCi})">✕ Appalto</button>`:''}
+      </div>
+      ${c.depts.map((d, di) => `
+        <div class="dept-card" style="margin-left:8px">
+          <div class="dept-card-header">
+            <div class="dept-card-name">📁 ${d.name}</div>
+            <button class="btn btn-danger" onclick="removeDept(${realCi},${di})">✕</button>
+          </div>
+          <div class="pill-list" style="margin-bottom:0">
+            ${d.activities.map((a,ai) =>
+              `<span class="pill">${a} <span class="pill-remove" onclick="removeActivity(${realCi},${di},${ai})">×</span></span>`
+            ).join('') || '<span style="font-size:.78rem;color:var(--muted)">Nessuna attività</span>'}
+          </div>
+          <div class="dept-add-row">
+            <input type="text" id="newAct_${realCi}_${di}" placeholder="Nuova attività…">
+            <button class="btn btn-primary btn-xs" onclick="addActivity(${realCi},${di})">+</button>
+          </div>
+        </div>
+      `).join('')}
+      <div style="display:flex;gap:8px;margin-top:8px;margin-left:8px">
+        <input type="text" id="newDept_${realCi}" placeholder="Nuovo reparto…" style="margin-bottom:0;flex:1;font-size:.85rem;padding:9px 12px">
+        <button class="btn btn-primary btn-xs" onclick="addDept(${realCi})">+ Reparto</button>
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty" style="padding:20px"><div class="empty-icon">🏗</div>Nessun appalto assegnato</div>';
+
+  // mostra/nascondi riga "nuovo appalto" solo per admin
+  document.getElementById('addContractRow').style.display = isAdmin() ? 'flex' : 'none';
 }
-function removeActivity(di, ai) {
-  state.depts[di].activities.splice(ai, 1);
+
+function addWorker() {
+  const val = document.getElementById('newWorker').value.trim();
+  if (!val) return;
+  if (state.workers.includes(val)) { showToast('Operatore già presente'); return; }
+  state.workers.push(val);
+  document.getElementById('newWorker').value = '';
+  save(); populateSelects(); renderSettings(); showToast(`✅ ${val} aggiunto`);
+}
+function removeWorker(w) {
+  state.workers = state.workers.filter(x => x !== w);
   save(); populateSelects(); renderSettings();
 }
 
-document.getElementById('newWorker').addEventListener('keydown', e => e.key==='Enter' && addWorker());
-document.getElementById('newDept').addEventListener('keydown',   e => e.key==='Enter' && addDept());
+function addContract() {
+  const val = document.getElementById('newContract').value.trim();
+  if (!val) return;
+  if (state.contracts.find(c => c.name === val)) { showToast('Appalto già presente'); return; }
+  state.contracts.push({ name: val, depts: [] });
+  document.getElementById('newContract').value = '';
+  save(); populateSelects(); renderSettings(); showToast(`✅ Appalto "${val}" aggiunto`);
+}
+function removeContract(ci) {
+  if (!isAdmin()) return;
+  const name = state.contracts[ci].name;
+  if (!confirm(`Eliminare l'appalto "${name}" e tutti i suoi reparti?`)) return;
+  state.contracts.splice(ci, 1);
+  save(); populateSelects(); renderSettings(); showToast(`Appalto "${name}" eliminato`);
+}
+
+function addDept(ci) {
+  const input = document.getElementById(`newDept_${ci}`);
+  const val = input?.value.trim();
+  if (!val) return;
+  const allDepts = state.contracts.flatMap(c => c.depts.map(d => d.name));
+  if (allDepts.includes(val)) { showToast('Reparto già presente'); return; }
+  state.contracts[ci].depts.push({ name: val, activities: [] });
+  save(); populateSelects(); renderSettings(); showToast(`✅ Reparto "${val}" aggiunto`);
+}
+function removeDept(ci, di) {
+  const name = state.contracts[ci].depts[di].name;
+  if (!confirm(`Eliminare il reparto "${name}"?`)) return;
+  state.contracts[ci].depts.splice(di, 1);
+  save(); populateSelects(); renderSettings(); showToast(`Reparto "${name}" eliminato`);
+}
+
+function addActivity(ci, di) {
+  const input = document.getElementById(`newAct_${ci}_${di}`);
+  const val = input?.value.trim();
+  if (!val) return;
+  if (state.contracts[ci].depts[di].activities.includes(val)) { showToast('Attività già presente'); return; }
+  state.contracts[ci].depts[di].activities.push(val);
+  save(); populateSelects(); renderSettings(); showToast(`✅ "${val}" aggiunta`);
+}
+function removeActivity(ci, di, ai) {
+  state.contracts[ci].depts[di].activities.splice(ai, 1);
+  save(); populateSelects(); renderSettings();
+}
+
+document.getElementById('newWorker').addEventListener('keydown',  e => e.key==='Enter' && addWorker());
+document.getElementById('newContract').addEventListener('keydown', e => e.key==='Enter' && addContract());
 
 // ══════════════════════════════════════════════
 //  TAB: ACCOUNT (solo admin)
@@ -900,7 +1044,7 @@ function renderAccounts() {
       <div class="account-avatar">${acc.username.charAt(0).toUpperCase()}</div>
       <div class="account-info">
         <div class="account-name">${acc.username} ${roleLabel(acc.role)}</div>
-        <div class="account-meta">${acc.role==='admin'?'Tutti i reparti':(acc.depts?.length?acc.depts.join(', '):'Nessun reparto')}</div>
+        <div class="account-meta">${acc.role==='admin' ? 'Tutti gli appalti' : (acc.contracts?.length ? acc.contracts.join(', ') : 'Nessun appalto')}</div>
       </div>
       <div class="account-actions">
         <button class="btn btn-edit" onclick="openEditAccount('${acc.id}')">✎</button>
@@ -929,7 +1073,7 @@ function openEditAccount(id) {
   document.getElementById('accUser').value = acc.username;
   document.getElementById('accPass').value = '';
   document.getElementById('accRole').value = acc.role;
-  renderDeptCheckboxes(acc.depts||[]);
+  renderDeptCheckboxes(acc.contracts||[]);
   document.getElementById('accountForm').style.display = 'block';
   document.getElementById('accountForm').scrollIntoView({ behavior:'smooth' });
 }
@@ -943,10 +1087,10 @@ function renderDeptCheckboxes(selected=[]) {
   const section = document.getElementById('deptCheckboxSection');
   if (role === 'admin') { section.style.display = 'none'; return; }
   section.style.display = 'block';
-  document.getElementById('deptCheckboxes').innerHTML = state.depts.map(d => `
+  document.getElementById('deptCheckboxes').innerHTML = state.contracts.map(c => `
     <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border-radius:8px;cursor:pointer;text-transform:none;font-size:.88rem;font-weight:600;color:var(--text);letter-spacing:0">
-      <input type="checkbox" value="${d.name}" ${selected.includes(d.name)?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);margin:0">
-      ${d.name}
+      <input type="checkbox" value="${c.name}" ${selected.includes(c.name)?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);margin:0">
+      🏗 ${c.name}
     </label>
   `).join('');
 }
@@ -958,23 +1102,21 @@ function saveAccount() {
   const role     = document.getElementById('accRole').value;
   if (!username) { showToast('Inserisci username'); return; }
 
-  const depts = role === 'admin' ? [] :
+  const contracts = role === 'admin' ? [] :
     [...document.querySelectorAll('#deptCheckboxes input:checked')].map(cb => cb.value);
 
   if (id) {
-    // edit
     const acc = state.accounts.find(a=>a.id===id);
     if (!acc) return;
     if (state.accounts.some(a=>a.username===username && a.id!==id)) { showToast('Username già in uso'); return; }
     acc.username = username;
     if (password) acc.password = password;
-    acc.role = role; acc.depts = depts;
+    acc.role = role; acc.contracts = contracts;
     showToast(`✅ Account "${username}" aggiornato`);
   } else {
-    // new
     if (state.accounts.some(a=>a.username===username)) { showToast('Username già in uso'); return; }
     if (!password) { showToast('Inserisci una password'); return; }
-    state.accounts.push({ id: 'u_'+Date.now(), username, password, role, depts });
+    state.accounts.push({ id: 'u_'+Date.now(), username, password, role, contracts });
     showToast(`✅ Account "${username}" creato`);
   }
   save(); closeAccountForm(); renderAccounts();
